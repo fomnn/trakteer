@@ -107,6 +107,19 @@ try {
 }
 ```
 
+### Blocked by Cloudflare
+
+Trakteer sits behind Cloudflare, which rejects requests that carry no
+`User-Agent`. Every request from this library identifies itself as
+`@fomnn/trakteer (+https://github.com/fomnn/trakteer)`, including on runtimes
+whose `fetch` sends no default (e.g. Cloudflare Workers).
+
+When Cloudflare blocks a request anyway, the call throws
+`TrakteerBlockedError` — a `TrakteerHttpError` subclass with the `url` and the
+Cloudflare `rayId`. That is a firewall decision, not a stale CSRF token, so
+retrying does not help; the `fetch` option can route traffic through a
+different egress if needed.
+
 ### Custom fetch
 
 Every call that hits the network accepts a `fetch` override, which is useful for

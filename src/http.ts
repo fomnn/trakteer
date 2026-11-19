@@ -16,6 +16,13 @@ export type FetchLike = typeof fetch;
 /** Default request timeout. */
 const REQUEST_TIMEOUT = 15_000;
 
+/**
+ * Trakteer's WAF blocks requests without a `User-Agent` with a 403 page, so
+ * every request identifies itself. Runtimes do not agree on a default: Node's
+ * `fetch` sends `node`, Cloudflare Workers sends none.
+ */
+const USER_AGENT = "@fomnn/trakteer (+https://github.com/fomnn/trakteer)";
+
 export interface RequestOptions {
   /** Override fetch, e.g. to route requests through an egress proxy. */
   fetch?: FetchLike;
@@ -75,6 +82,38 @@ function errorMessage(status: number, body: string): string {
   return `Trakteer request failed with status ${status}`;
 }
 
+/**
+ * Error thrown when Cloudflare's WAF answers with its block page instead of
+ * Trakteer. This is a firewall decision, not a stale CSRF token, so retrying
+ * with a fresh token does not help.
+ */
+export class TrakteerBlockedError extends TrakteerHttpError {
+  /** URL that was blocked. */
+  readonly url: string;
+  /** Cloudflare Ray ID, useful when reporting the block to Trakteer. */
+  readonly rayId?: string;
+
+  constructor(status: number, body: string, url: string, rayId?: string) {
+    super(status, body);
+    this.name = "TrakteerBlockedError";
+    this.message = `Trakteer request blocked by Cloudflare with status ${status}: ${url}`;
+    this.url = url;
+    this.rayId = rayId;
+  }
+}
+
+/** The WAF block page is recognizable by its title and headline. */
+function isBlockPage(body: string): boolean {
+  return (
+    body.includes("Attention Required! | Cloudflare") ||
+    body.includes("Sorry, you have been blocked")
+  );
+}
+
+function blockedRayId(body: string): string | undefined {
+  return /Ray ID:[^<]*<strong[^>]*>([a-z0-9]+)</i.exec(body)?.[1];
+}
+
 function compactHeaders(headers: Record<string, string | undefined>): Record<string, string> {
   const result: Record<string, string> = {};
   for (const [name, value] of Object.entries(headers)) {
@@ -106,6 +145,7 @@ function isTimeout(error: unknown): boolean {
  * @param options Request body, headers and transport overrides.
  * @returns The response and its body, read as text.
  * @throws {TrakteerHttpError} When the response status is not 2xx.
+ * @throws {TrakteerBlockedError} When Cloudflare's WAF blocks the request.
  * @throws {Error} When the request times out.
  */
 export async function request(
@@ -123,6 +163,7 @@ export async function request(
       body: options.json === undefined ? undefined : JSON.stringify(options.json),
       headers: compactHeaders({
         Accept: "application/json",
+        "User-Agent": USER_AGENT,
         ...options.headers,
       }),
       ignoreResponseError: true,
@@ -145,6 +186,9 @@ export async function request(
 
   const body = response._data ?? "";
   if (!response.ok) {
+    if (isBlockPage(body)) {
+      throw new TrakteerBlockedError(response.status, body, url, blockedRayId(body));
+    }
     throw new TrakteerHttpError(response.status, body);
   }
 

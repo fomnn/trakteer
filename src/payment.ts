@@ -10,7 +10,13 @@
 import { parseSetCookie } from "set-cookie-parser";
 import { cached, invalidate } from "./cache";
 import { readQrString } from "./checkout";
-import { TrakteerHttpError, request, requestJson, type FetchLike } from "./http";
+import {
+  TrakteerBlockedError,
+  TrakteerHttpError,
+  request,
+  requestJson,
+  type FetchLike,
+} from "./http";
 import { checkoutResponseSchema, expect, paymentTotalSchema } from "./schemas";
 import type { CreatePaymentConfig, PaymentMethod, PaymentTotal } from "./types";
 import { TrakteerUser } from "./user";
@@ -108,7 +114,12 @@ function csrfHeaders(token: CsrfToken): Record<string, string> {
 }
 
 function isCsrfFailure(error: unknown): boolean {
-  return error instanceof TrakteerHttpError && CSRF_FAILURE_STATUSES.has(error.status);
+  // A Cloudflare block is a firewall decision; refreshing the token cannot help.
+  return (
+    error instanceof TrakteerHttpError &&
+    !(error instanceof TrakteerBlockedError) &&
+    CSRF_FAILURE_STATUSES.has(error.status)
+  );
 }
 
 function onOff(value: boolean | undefined): "on" | "off" {

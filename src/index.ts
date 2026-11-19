@@ -19,7 +19,7 @@
  * @module
  */
 
-export { TrakteerHttpError } from "./http";
+export { TrakteerBlockedError, TrakteerHttpError } from "./http";
 export type { FetchLike } from "./http";
 export * from "./payment";
 export * from "./public-api";
