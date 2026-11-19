@@ -5,6 +5,6 @@
   "exports": "./src/index.ts",
   "license": "MIT",
   "publish": {
-    "include": ["src", "package.json", "README.md"]
+    "include": ["src", "package.json", "README.md", "LICENSE"]
   }
 }

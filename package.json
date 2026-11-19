@@ -3,7 +3,15 @@
   "version": "0.0.1",
   "description": "Unofficial trakteer package",
   "license": "MIT",
-  "author": "Author Name fathurrahmann0803@gmail.com",
+  "author": "Fathur Rahman N <fathurrahmann0803@gmail.com>",
+  "homepage": "https://github.com/fomnn/trakteer#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fomnn/trakteer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/fomnn/trakteer/issues"
+  },
   "type": "module",
   "scripts": {
     "test": "vitest",
