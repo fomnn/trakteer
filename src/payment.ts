@@ -1,3 +1,12 @@
+/**
+ * Payment (tip) creation through the Trakteer Payment API.
+ *
+ * Creating a payment only creates a pending order and returns a checkout URL;
+ * no money moves until the supporter pays there.
+ *
+ * @module
+ */
+
 import { parseSetCookie } from "set-cookie-parser";
 import { cached, invalidate } from "./cache";
 import { readQrString } from "./checkout";
@@ -22,6 +31,7 @@ const TOKEN_TTL = 60 * 60 * 1000;
 /** Statuses that usually mean the cached CSRF token or cookie went stale. */
 const CSRF_FAILURE_STATUSES = new Set([403, 419]);
 
+/** Options bag for the {@link TrakteerPayment} methods. */
 export interface PaymentApiOptions {
   /** Override fetch, e.g. to route requests through an egress proxy. */
   fetch?: FetchLike;
@@ -32,11 +42,15 @@ export interface PaymentApiOptions {
   tokenPage?: string;
 }
 
+/** Anonymous session credentials used for the payment form. */
 export interface CsrfToken {
+  /** Session cookies, already joined into a `Cookie` header value. */
   cookie: string;
+  /** Value for the `X-Csrf-Token` header. */
   csrf: string;
 }
 
+/** Result of {@link TrakteerPayment.createPayment}. */
 export interface CreatePaymentResult {
   /** Raw QRIS payload, when the payment method renders a QR code. */
   qrString?: string;
@@ -145,9 +159,26 @@ function checkoutUrl(data: unknown): URL {
 /**
  * Payment API. Upstream returns `Error` values in some paths and throws in
  * others; this port throws consistently.
+ *
+ * @example
+ * ```ts
+ * import { TrakteerPayment } from "@fomnn/trakteer";
+ *
+ * const { url, qrString } = await TrakteerPayment.createPayment(
+ *   "<creator-user-id>",
+ *   "qris",
+ *   1,
+ *   { display_name: "Someone", support_message: "Keep it up!" },
+ * );
+ * ```
  */
 export class TrakteerPayment {
-  /** All payment methods, keyed by method id (e.g. "qris"). */
+  /**
+   * All payment methods, keyed by method id (e.g. `"qris"`).
+   *
+   * @param options Transport options.
+   * @returns The available methods, including disabled ones.
+   */
   static getPaymentMethods(
     options: PaymentApiOptions = {},
   ): Promise<Record<string, PaymentMethod>> {
@@ -164,7 +195,15 @@ export class TrakteerPayment {
     });
   }
 
-  /** Total amount to pay, including fees. `amount` is the price in rupiah. */
+  /**
+   * Total amount to pay, including fees.
+   *
+   * @param paymentMethod Payment method id, see {@link TrakteerPayment.getPaymentMethods}.
+   * @param amount Price in rupiah.
+   * @param isPaymentFeeBySupporter Charge the payment fee to the supporter.
+   * @param options Transport options.
+   * @returns The price breakdown for this method and amount.
+   */
   static async getTotalAmount(
     paymentMethod: string,
     amount: number,
@@ -193,7 +232,15 @@ export class TrakteerPayment {
     return expect<PaymentTotal>(paymentTotalSchema, body.data, "payment total");
   }
 
-  /** Fetches a CSRF token and the anonymous session cookie that goes with it. */
+  /**
+   * Fetches a CSRF token and the anonymous session cookie that goes with it.
+   *
+   * The result is cached for one hour and is refreshed automatically when a
+   * payment request is rejected with 403 or 419.
+   *
+   * @param options Transport options.
+   * @returns The token and its cookies.
+   */
   static generateNewToken(options: PaymentApiOptions = {}): Promise<CsrfToken> {
     const tokenPage = options.tokenPage ?? DEFAULT_TOKEN_PAGE;
 
@@ -231,8 +278,13 @@ export class TrakteerPayment {
    * expired, so no money moves on creation.
    *
    * @param creatorId Creator *user* id, not the page slug.
-   * @param paymentMethod Payment method id, see getPaymentMethods().
-   * @param amount Amount in units.
+   * @param paymentMethod Payment method id, see {@link TrakteerPayment.getPaymentMethods}.
+   * @param amount Amount in units (quantity), not rupiah.
+   * @param config Supporter details, message and e-wallet numbers.
+   * @param options Transport options.
+   * @returns The checkout URL and, when available, the QRIS payload.
+   * @throws {Error} When the method is unsupported, the amount is below the
+   * minimum, or a required e-wallet field is missing.
    */
   static async createPayment(
     creatorId: string,

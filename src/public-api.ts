@@ -1,3 +1,12 @@
+/**
+ * Client for the official Trakteer Public API.
+ *
+ * Requests are authenticated with an API key from
+ * <https://trakteer.id/manage/api-trakteer>.
+ *
+ * @module
+ */
+
 import { requestJson, type FetchLike } from "./http";
 import { countEnvelopeSchema, envelopeSchema, expect } from "./schemas";
 import type { SupportHistory, TransactionHistory } from "./types";
@@ -6,11 +15,13 @@ const BASE_URL = "https://api.trakteer.id/v1/public";
 
 type Status = "success" | "error";
 
+/** Options bag for {@link TrakteerPublicApi}. */
 export interface PublicApiOptions {
-  /** API key from https://trakteer.id/manage/api-trakteer */
+  /** API key from <https://trakteer.id/manage/api-trakteer>. */
   apiKey: string;
   /** Override fetch, e.g. to route requests through an egress proxy. */
   fetch?: FetchLike;
+  /** Value of the `User-Agent` header sent with each request. */
   userAgent?: string;
 }
 
@@ -49,16 +60,32 @@ function parseCount(value: unknown, context: string): number {
 
 /**
  * Public API - uses the official API from Trakteer.
- * @see https://trakteer.id/manage/api-trakteer
  *
  * Unlike the upstream class, failures are thrown instead of returned as
  * `Error` values.
+ *
+ * @see https://trakteer.id/manage/api-trakteer
+ *
+ * @example
+ * ```ts
+ * import { TrakteerPublicApi } from "@fomnn/trakteer";
+ *
+ * const api = new TrakteerPublicApi({ apiKey: Deno.env.get("TRAKTEER_API_KEY")! });
+ *
+ * const given = await api.quantityGiven("supporter@example.com");
+ * const balance = await api.currentBalance();
+ * ```
  */
 export class TrakteerPublicApi {
   private readonly apiKey: string;
   private readonly fetchImpl?: FetchLike;
   private readonly userAgent?: string;
 
+  /**
+   * Creates a Public API client.
+   *
+   * @param options API key and transport options.
+   */
   constructor(options: PublicApiOptions) {
     this.apiKey = options.apiKey;
     this.fetchImpl = options.fetch;
@@ -86,6 +113,9 @@ export class TrakteerPublicApi {
 
   /**
    * Number of units a supporter has given in the last 30 days, by email.
+   *
+   * @param email Supporter email address.
+   * @returns The number of units.
    */
   async quantityGiven(email: string): Promise<number> {
     const body = await this.send<unknown>("/quantity-given", {
@@ -96,14 +126,24 @@ export class TrakteerPublicApi {
     return parseCount(readResult(body, "Failed to get quantity given"), "quantity-given");
   }
 
-  /** Support history of the account that owns the API key. */
+  /**
+   * Support history of the account that owns the API key.
+   *
+   * @param limit Items per page.
+   * @param page 1-based page number.
+   * @returns The support entries and their pagination metadata.
+   */
   async supportHistory(limit = 10, page = 1): Promise<SupportHistory> {
     const body = await this.send<unknown>("/supports", { query: { limit, page } });
 
     return assertSuccess<SupportHistory>(body, "Failed to get support history");
   }
 
-  /** Current balance of the account that owns the API key. */
+  /**
+   * Current balance of the account that owns the API key.
+   *
+   * @returns The balance, in rupiah.
+   */
   async currentBalance(): Promise<number> {
     const body = await this.send<unknown>("/current-balance");
     const balance = Number.parseFloat(readResult(body, "Failed to get current balance"));
@@ -113,7 +153,13 @@ export class TrakteerPublicApi {
     return balance;
   }
 
-  /** Transaction history of the account that owns the API key. */
+  /**
+   * Transaction history of the account that owns the API key.
+   *
+   * @param limit Items per page.
+   * @param page 1-based page number.
+   * @returns The transactions and their pagination metadata.
+   */
   async transactionHistory(limit = 5, page = 1): Promise<TransactionHistory> {
     const body = await this.send<unknown>("/transactions", { query: { limit, page } });
 
