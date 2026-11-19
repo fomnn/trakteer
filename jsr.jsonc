@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/jsr-io/jsr/1624825e0783b6921e99693e10e30ae67b44119b/frontend/static/schema/config-file.v1.json",
   "name": "@fomnn/trakteer",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "exports": "./src/index.ts",
   "license": "MIT",
   "publish": {
